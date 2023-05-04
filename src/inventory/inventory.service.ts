@@ -1,48 +1,123 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOneOptions } from 'typeorm';
-import { InventoryItem } from './inventory.entity';
+import { DeleteResult, Repository } from 'typeorm';
+import { InventoryEntity } from './entities/inventory.entity';
+import { CreateInventoryDto } from './dto/createInventoryDto';
+import { UpdateInventoryDto } from './dto/updateInventory.dto';
+import { UserEntity } from 'src/users/entities/user.entity';
+import { CustomError } from 'src/common/custom/customError';
+import { SearchQuery } from './interface/inventory.interface';
 
 @Injectable()
 export class InventoryService {
   constructor(
-    @InjectRepository(InventoryItem)
-    private inventoryRepository: Repository<InventoryItem>,
+    @InjectRepository(InventoryEntity)
+    private inventoryRepository: Repository<InventoryEntity>,
+    @InjectRepository(UserEntity)
+    private userRepository: Repository<UserEntity>,
   ) {}
 
-  async getAllInventoryItems(): Promise<InventoryItem[]> {
-    return this.inventoryRepository.find();
+  async createInventory(
+    createInventoryDto: CreateInventoryDto,
+    userId: string,
+  ): Promise<InventoryEntity> {
+    try {
+      const inventory = this.inventoryRepository.create(createInventoryDto);
+      inventory.user = await this.userRepository.findOne({
+        where: { id: userId },
+      });
+      inventory.user.password = undefined;
+      const newInventory = await this.inventoryRepository.save(inventory);
+
+      return newInventory;
+    } catch (err) {
+      throw new CustomError(
+        `Failed to create Inventory: ${err.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
-  async getInventoryItemById(id: number): Promise<InventoryItem> {
-    const options: FindOneOptions<InventoryItem> = { where: { id } };
-    return await this.inventoryRepository.findOne(options);
-  }
-
-  async createInventoryItem(
-    name: string,
-    description: string,
-    quantity: number,
-  ): Promise<InventoryItem> {
-    const newInventoryItem = this.inventoryRepository.create({
-      name,
-      description,
-      quantity,
+  async isAuthor(id: string, userId: string): Promise<boolean> {
+    const isAuthor = await this.inventoryRepository.findOne({
+      where: { id: id, userId: userId },
     });
-    return this.inventoryRepository.save(newInventoryItem);
+    if (!isAuthor) {
+      throw new CustomError(
+        'You are unauthorized to perform this action',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    return true;
   }
 
-  async updateInventoryItemQuantity(
-    id: number,
-    newQuantity: number,
-  ): Promise<InventoryItem> {
-    const options: FindOneOptions<InventoryItem> = { where: { id } };
-    const inventoryItem = await this.inventoryRepository.findOne(options);
-    inventoryItem.quantity = newQuantity;
-    return this.inventoryRepository.save(inventoryItem);
+  async getInventoryById(id: string, userId: string): Promise<InventoryEntity> {
+    try {
+      await this.isAuthor(id, userId);
+      const inventory = await this.inventoryRepository.findOne({
+        where: { id: id },
+        relations: ['user'],
+      });
+      if (!inventory) {
+        throw new CustomError(
+          `Inventory not found with id ${id}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      delete inventory.user.password;
+      return inventory;
+    } catch (err) {
+      throw new CustomError(
+        `Failed to get Inventory by id: ${err.message}`,
+        err.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
-  async deleteInventoryItem(id: number): Promise<void> {
-    await this.inventoryRepository.delete(id);
+  async getAllInventory(searchQuery: SearchQuery): Promise<InventoryEntity[]> {
+    try {
+      const allInventory = await this.inventoryRepository.find({
+        where: {
+          ...searchQuery,
+        },
+      });
+      return allInventory;
+    } catch (err) {
+      throw new CustomError(
+        `Failed to get all Inventory: ${err.message}`,
+
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async updateInventory(
+    id: string,
+    updateInventoryDto: UpdateInventoryDto,
+    userId: string,
+  ) {
+    try {
+      if (await this.isAuthor(id, userId)) {
+        return await this.inventoryRepository.update(id, updateInventoryDto);
+      }
+    } catch (err) {
+      throw new CustomError(
+        `Failed to update inventory: ${err.message}`,
+        err.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async deleteInventory(id: string, userId: string): Promise<DeleteResult> {
+    try {
+      if (await this.isAuthor(id, userId)) {
+        return await this.inventoryRepository.delete(id);
+      }
+    } catch (err) {
+      throw new CustomError(
+        `Failed to delete inventory: ${err.message}`,
+        err.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

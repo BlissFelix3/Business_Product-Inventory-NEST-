@@ -1,43 +1,56 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User } from './users/user.entity';
-import { UsersService } from './users/user.service';
-import * as bcrypt from 'bcryptjs';
-import { JWT_SECRET } from './constants';
+import {
+  CustomError,
+  E_INCORRECT_EMAIL_OR_PASSWORD,
+  HttpStatus,
+} from 'src/common/custom/customError';
+import { UsersService } from 'src/users/users.service';
+import { UserEntity } from 'src/users/entities/user.entity';
+import { LoginDto } from './dto/login-dto';
+import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { JwtPayload } from 'src/users/interface/users.interface';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private usersService: UsersService,
-    private jwtService: JwtService,
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
   ) {}
 
-  async validateUser(username: string, password: string): Promise<User | null> {
-    const user = await this.usersService.getUserByUsername(username);
-
-    if (user && bcrypt.compareSync(password, user.password)) {
-      return user;
-    }
-    return null;
+  async signUp(createUserDto: CreateUserDto): Promise<UserEntity> {
+    const user = await this.usersService.create(createUserDto);
+    delete user.password;
+    return user;
   }
 
-  async registerUser(user: User): Promise<User> {
-    const { username } = user;
-    const userNameExists = await this.usersService.getUserByUsername(username);
-    if (userNameExists) {
-      throw new ConflictException('Username already exists');
-    }
-    const salt = bcrypt.genSaltSync(10);
-    user.password = bcrypt.hashSync(user.password, salt);
+  // async validateUser(email: string, password: string) {
+  //   const user = await this.usersService.findByEmail(email);
 
-    const createdUser = await this.usersService.createUser(user);
-    return createdUser;
+  //   if (user && user.validatePassword(password)) {
+  //     return user;
+  //   }
+
+  //   throw CustomErrorFactory(
+  //     E_INCORRECT_EMAIL_OR_PASSWORD,
+  //     HttpStatus.CONFLICT,
+  //   );
+  // }
+
+  async login(loginDto: LoginDto): Promise<{ accessToken: string }> {
+    const { email, password } = loginDto;
+    const user = await this.usersService.findByEmail(email);
+    if (!(await user?.validatePassword(password))) {
+      throw new CustomError(E_INCORRECT_EMAIL_OR_PASSWORD, HttpStatus.CONFLICT);
+    }
+    const payload: JwtPayload = { id: user.id, email: user.email };
+    const accessToken = this.jwtService.sign(payload);
+    return { accessToken };
   }
 
-  async loginUser(user: User) {
-    const payload = { sub: user.id, username: user.username };
-    return {
-      access_token: this.jwtService.sign(payload, { secret: JWT_SECRET }),
-    };
+  async validateJwtPayload(
+    payload: JwtPayload,
+  ): Promise<UserEntity | undefined> {
+    return this.usersService.findById(payload.id);
   }
 }

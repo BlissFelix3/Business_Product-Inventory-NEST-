@@ -3,10 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
-import { InventoryItem } from './inventory.entity';
+import { InventoryEntity } from './entities/inventory.entity';
+import { UserEntity } from 'src/users/entities/user.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([InventoryItem]), AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([InventoryEntity, UserEntity]),
+    AuthModule,
+  ],
   controllers: [InventoryController],
   providers: [InventoryService],
 })
