@@ -26,7 +26,3 @@ export const HttpStatus = {
   CONFLICT: 409,
   INTERNAL_SERVER_ERROR: 500,
 };
-
-export function CustomErrorFactory(error: string, status: number) {
-  return new CustomError(error, status);
-}
