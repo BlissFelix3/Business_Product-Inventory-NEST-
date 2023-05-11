@@ -10,6 +10,7 @@ import { UserEntity } from 'src/users/entities/user.entity';
 import { LoginDto } from './dto/login-dto';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { JwtPayload } from 'src/users/interface/users.interface';
+import { JWT_SECRET } from 'src/common/constants';
 
 @Injectable()
 export class AuthService {
@@ -44,7 +45,7 @@ export class AuthService {
       throw new CustomError(E_INCORRECT_EMAIL_OR_PASSWORD, HttpStatus.CONFLICT);
     }
     const payload: JwtPayload = { id: user.id, email: user.email };
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload, { secret: JWT_SECRET });
     return { accessToken };
   }
 
